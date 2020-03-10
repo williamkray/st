@@ -5,7 +5,7 @@
  *
  * font: see http://freedesktop.org/software/fontconfig/fontconfig-user.html
  */
-static char *font = "Liberation Mono:pixelsize=12:antialias=true:autohint=true";
+static char *font = "DejaVu Sans Mono:style=Book:pixelsize=14:antialias=true:autohint=true";
 static int borderpx = 2;
 
 /*
@@ -63,7 +63,7 @@ static unsigned int cursorthickness = 2;
 static int bellvolume = 0;
 
 /* default TERM value */
-char *termname = "st-256color";
+char *termname = "xterm-256color";
 
 /*
  * spaces per tab
@@ -85,30 +85,28 @@ unsigned int tabspaces = 8;
 /* Terminal colors (16 first used in escape sequence) */
 static const char *colorname[] = {
 	/* 8 normal colors */
-	"black",
-	"red3",
-	"green3",
-	"yellow3",
-	"blue2",
-	"magenta3",
-	"cyan3",
-	"gray90",
+	"#282A2E",  /* black   */
+	"#A54242",  /* red     */
+	"#8C9440",  /* green   */
+	"#DE935F",  /* yellow  */
+	"#5F819D",  /* blue    */
+	"#85678F",  /* magenta */
+	"#5E8D87",  /* cyan    */
+	"#707880",  /* white   */
 
 	/* 8 bright colors */
-	"gray50",
-	"red",
-	"green",
-	"yellow",
-	"#5c5cff",
-	"magenta",
-	"cyan",
-	"white",
+	"#373B41",  /* bright black   */
+	"#CC6666",  /* bright red     */
+	"#B5BD68",  /* bright green   */
+	"#F0C674",  /* bright yellow  */
+	"#81A2BE",  /* bright blue    */
+	"#B294BB",  /* bright magenta */
+	"#8ABEB7",  /* bright cyan    */
+	"#C5C8C6",  /* bright white   */
 
-	[255] = 0,
+  [256] = "#1D1F21", /* background */
+  [257] = "#C5C8C6",  /* foreground */
 
-	/* more colors can be added after 255 to use with DefaultXX */
-	"#cccccc",
-	"#555555",
 };
 
 
@@ -116,10 +114,10 @@ static const char *colorname[] = {
  * Default colors (colorname index)
  * foreground, background, cursor, reverse cursor
  */
-unsigned int defaultfg = 7;
-unsigned int defaultbg = 0;
-static unsigned int defaultcs = 256;
-static unsigned int defaultrcs = 257;
+unsigned int defaultfg = 257;
+unsigned int defaultbg = 256;
+static unsigned int defaultcs = 7;
+static unsigned int defaultrcs = 15;
 
 /*
  * Default shape of cursor
@@ -140,7 +138,7 @@ static unsigned int rows = 24;
 /*
  * Default colour and shape of the mouse cursor
  */
-static unsigned int mouseshape = XC_xterm;
+static unsigned int mouseshape = XC_left_ptr;
 static unsigned int mousefg = 7;
 static unsigned int mousebg = 0;
 
@@ -162,10 +160,11 @@ static uint forcemousemod = ShiftMask;
  * Beware that overloading Button1 will disable the selection.
  */
 static MouseShortcut mshortcuts[] = {
-	/* mask                 button   function        argument       release */
-	{ XK_ANY_MOD,           Button2, selpaste,       {.i = 0},      1 },
-	{ XK_ANY_MOD,           Button4, ttysend,        {.s = "\031"} },
-	{ XK_ANY_MOD,           Button5, ttysend,        {.s = "\005"} },
+	/* button               mask            string */
+  /* commenting this out to see what happens
+	{ Button4,              XK_ANY_MOD,     "\031" },
+	{ Button5,              XK_ANY_MOD,     "\005" },
+  */
 };
 
 /* Internal keyboard shortcuts. */
@@ -178,9 +177,9 @@ static Shortcut shortcuts[] = {
 	{ ControlMask,          XK_Print,       toggleprinter,  {.i =  0} },
 	{ ShiftMask,            XK_Print,       printscreen,    {.i =  0} },
 	{ XK_ANY_MOD,           XK_Print,       printsel,       {.i =  0} },
-	{ TERMMOD,              XK_Prior,       zoom,           {.f = +1} },
-	{ TERMMOD,              XK_Next,        zoom,           {.f = -1} },
-	{ TERMMOD,              XK_Home,        zoomreset,      {.f =  0} },
+	{ ControlMask,          XK_equal,       zoom,           {.f = +1} },
+	{ ControlMask,          XK_minus,       zoom,           {.f = -1} },
+	{ ControlMask,          XK_0,           zoomreset,      {.f =  0} },
 	{ TERMMOD,              XK_C,           clipcopy,       {.i =  0} },
 	{ TERMMOD,              XK_V,           clippaste,      {.i =  0} },
 	{ TERMMOD,              XK_Y,           selpaste,       {.i =  0} },
@@ -203,6 +202,10 @@ static Shortcut shortcuts[] = {
  * * 0: no value
  * * > 0: cursor application mode enabled
  * * < 0: cursor application mode disabled
+ * crlf value
+ * * 0: no value
+ * * > 0: crlf mode is enabled
+ * * < 0: crlf mode is disabled
  *
  * Be careful with the order of the definitions because st searches in
  * this table sequentially, so any XK_ANY_MOD must be in the last
@@ -220,6 +223,13 @@ static KeySym mappedkeys[] = { -1 };
  * numlock (Mod2Mask) and keyboard layout (XK_SWITCH_MOD) are ignored.
  */
 static uint ignoremod = Mod2Mask|XK_SWITCH_MOD;
+
+/*
+ * Override mouse-select while mask is active (when MODE_MOUSE is set).
+ * Note that if you want to use ShiftMask with selmasks, set this to an other
+ * modifier, set to 0 to not use it.
+ */
+static uint forceselmod = ShiftMask;
 
 /*
  * This is the huge key array which defines all compatibility to the Linux
@@ -283,37 +293,50 @@ static Key key[] = {
 	{ XK_KP_8,          XK_ANY_MOD,     "\033Ox",       +2,    0},
 	{ XK_KP_9,          XK_ANY_MOD,     "\033Oy",       +2,    0},
 	{ XK_Up,            ShiftMask,      "\033[1;2A",     0,    0},
+  /* modifications to arrow keys for tmux pane resizing, replacements below
 	{ XK_Up,            Mod1Mask,       "\033[1;3A",     0,    0},
+	{ XK_Down,          Mod1Mask,       "\033[1;3B",     0,    0},
+	{ XK_Left,          Mod1Mask,       "\033[1;3D",     0,    0},
+	{ XK_Right,         Mod1Mask,       "\033[1;3C",     0,    0},
+  */
+	{ XK_Up,            Mod1Mask,       "\001\005",      0,    0},
+	{ XK_Down,          Mod1Mask,       "\001\027",      0,    0},
+	{ XK_Left,          Mod1Mask,       "\001\021",      0,    0},
+	{ XK_Right,         Mod1Mask,       "\001\022",      0,    0},
+  /* modifications to arrow keys for tmux pane navigation, replacements below
+	{ XK_Up,      ShiftMask|ControlMask,"\033[1;6A",     0,    0},
+	{ XK_Down,    ShiftMask|ControlMask,"\033[1;6B",     0,    0},
+	{ XK_Left,    ShiftMask|ControlMask,"\033[1;6D",     0,    0},
+	{ XK_Right,   ShiftMask|ControlMask,"\033[1;6C",     0,    0},
+  */
+	{ XK_Up,      ShiftMask|ControlMask,"\001\013",      0,    0},
+	{ XK_Down,    ShiftMask|ControlMask,"\001\012",      0,    0},
+	{ XK_Left,    ShiftMask|ControlMask,"\001\010",      0,    0},
+	{ XK_Right,   ShiftMask|ControlMask,"\001\014",      0,    0},
+  /* done */
 	{ XK_Up,         ShiftMask|Mod1Mask,"\033[1;4A",     0,    0},
 	{ XK_Up,            ControlMask,    "\033[1;5A",     0,    0},
-	{ XK_Up,      ShiftMask|ControlMask,"\033[1;6A",     0,    0},
 	{ XK_Up,       ControlMask|Mod1Mask,"\033[1;7A",     0,    0},
 	{ XK_Up,ShiftMask|ControlMask|Mod1Mask,"\033[1;8A",  0,    0},
 	{ XK_Up,            XK_ANY_MOD,     "\033[A",        0,   -1},
 	{ XK_Up,            XK_ANY_MOD,     "\033OA",        0,   +1},
 	{ XK_Down,          ShiftMask,      "\033[1;2B",     0,    0},
-	{ XK_Down,          Mod1Mask,       "\033[1;3B",     0,    0},
 	{ XK_Down,       ShiftMask|Mod1Mask,"\033[1;4B",     0,    0},
 	{ XK_Down,          ControlMask,    "\033[1;5B",     0,    0},
-	{ XK_Down,    ShiftMask|ControlMask,"\033[1;6B",     0,    0},
 	{ XK_Down,     ControlMask|Mod1Mask,"\033[1;7B",     0,    0},
 	{ XK_Down,ShiftMask|ControlMask|Mod1Mask,"\033[1;8B",0,    0},
 	{ XK_Down,          XK_ANY_MOD,     "\033[B",        0,   -1},
 	{ XK_Down,          XK_ANY_MOD,     "\033OB",        0,   +1},
 	{ XK_Left,          ShiftMask,      "\033[1;2D",     0,    0},
-	{ XK_Left,          Mod1Mask,       "\033[1;3D",     0,    0},
 	{ XK_Left,       ShiftMask|Mod1Mask,"\033[1;4D",     0,    0},
 	{ XK_Left,          ControlMask,    "\033[1;5D",     0,    0},
-	{ XK_Left,    ShiftMask|ControlMask,"\033[1;6D",     0,    0},
 	{ XK_Left,     ControlMask|Mod1Mask,"\033[1;7D",     0,    0},
 	{ XK_Left,ShiftMask|ControlMask|Mod1Mask,"\033[1;8D",0,    0},
 	{ XK_Left,          XK_ANY_MOD,     "\033[D",        0,   -1},
 	{ XK_Left,          XK_ANY_MOD,     "\033OD",        0,   +1},
 	{ XK_Right,         ShiftMask,      "\033[1;2C",     0,    0},
-	{ XK_Right,         Mod1Mask,       "\033[1;3C",     0,    0},
 	{ XK_Right,      ShiftMask|Mod1Mask,"\033[1;4C",     0,    0},
 	{ XK_Right,         ControlMask,    "\033[1;5C",     0,    0},
-	{ XK_Right,   ShiftMask|ControlMask,"\033[1;6C",     0,    0},
 	{ XK_Right,    ControlMask|Mod1Mask,"\033[1;7C",     0,    0},
 	{ XK_Right,ShiftMask|ControlMask|Mod1Mask,"\033[1;8C",0,   0},
 	{ XK_Right,         XK_ANY_MOD,     "\033[C",        0,   -1},
@@ -344,12 +367,20 @@ static Key key[] = {
 	{ XK_End,           ShiftMask,      "\033[K",       -1,    0},
 	{ XK_End,           ShiftMask,      "\033[1;2F",    +1,    0},
 	{ XK_End,           XK_ANY_MOD,     "\033[4~",       0,    0},
+  /* new mappings for tmux window switching
+   */
+	{ XK_Prior,  ControlMask|ShiftMask, "\001p",         0,    0},
+	{ XK_Next,   ControlMask|ShiftMask, "\001n",         0,    0},
+  /* done */
 	{ XK_Prior,         ControlMask,    "\033[5;5~",     0,    0},
 	{ XK_Prior,         ShiftMask,      "\033[5;2~",     0,    0},
 	{ XK_Prior,         XK_ANY_MOD,     "\033[5~",       0,    0},
 	{ XK_Next,          ControlMask,    "\033[6;5~",     0,    0},
 	{ XK_Next,          ShiftMask,      "\033[6;2~",     0,    0},
 	{ XK_Next,          XK_ANY_MOD,     "\033[6~",       0,    0},
+  /* new mapping for tmux zoom, not working for unknown reasons */
+  { XK_Z,      ShiftMask|ControlMask, "\001z",         0,    0},
+  /* done */
 	{ XK_F1,            XK_NO_MOD,      "\033OP" ,       0,    0},
 	{ XK_F1, /* F13 */  ShiftMask,      "\033[1;2P",     0,    0},
 	{ XK_F1, /* F25 */  ControlMask,    "\033[1;5P",     0,    0},
@@ -457,3 +488,9 @@ static char ascii_printable[] =
 	" !\"#$%&'()*+,-./0123456789:;<=>?"
 	"@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_"
 	"`abcdefghijklmnopqrstuvwxyz{|}~";
+
+/*
+ * plumb_cmd is run on mouse button 3 click, with argument set to
+ * current selection and with cwd set to the cwd of the active shell
+ */
+static char *plumb_cmd = "plumb.sh";
